@@ -1,0 +1,182 @@
+-
+
+
+
+
+OVERVIEW
+
+The porting layer for rfat_code.c and rfat_disk.c consists of a set of macros
+that may point to subroutines, or directly implement functionality. It is
+assumed that the non-optional macros are defined in rfat_port.h.
+-
+
+
+
+CORE INTERFACE
+
+The core interface mostly deals with per volume locking. As F_FILE objects are
+not locked (which is only relevant for f_getc() and f_putc()), a volume has to
+be locked to provide exclusive access in a RTOS environment. This is typically
+done via mutexes or semaphoes: 
+
+    int      RFAT_PORT_CORE_INIT(void);
+    int      RFAT_PORT_CORE_LOCK(void);
+    void     RFAT_PORT_CORE_UNLOCK(void);
+
+RFAT_PORT_CORE_INIT() would perhaps allocate/initialize such a RTOS
+synchronization object, while RFAT_PORT_CORE_LOCK() and
+RFAT_PORT_CORE_UNLOCK() would implement the locking/unlocking. Return values
+for those macros can be:
+
+    F_NO_ERROR    success
+    F_ERR_BUSY    mutex/semaphore timed out
+    F_ERR_OS      generic RTOS error
+
+
+
+In order to implement the proper time stamps for files (create/modify/access)
+RFAT needs a way to retrieve the current time. One can assume that this might
+be UTC time, or local time.
+
+    void     RFAT_PORT_CORE_TIMEDATE(uint16_t *p_time, uint16_t *p_date);
+
+
+The time and date is returned in FAT time/date format.
+
+
+All the upper RFAT_PORT_CODE_* interfaces are optional.
+-
+
+
+
+DISK INTERFACE
+
+As with a volume, the SPI port accessing a SDCARD might be shared with a TFT
+or perhaps a EEPROM. Hence in an RTOS environment exclusive access is
+needed. Hence the analoguous intface to the volume/core is provided. N.b. that 
+this might imply 2 level locking (volume and SPI port).
+
+    int      RFAT_PORT_DISK_INIT(void);
+    int      RFAT_PORT_DISK_LOCK(void);
+    void     RFAT_PORT_DISK_UNLOCK(void);
+
+
+It's possible that during write operation the SDCARD will stay in a busy state
+for an extended period of time. To avoid hogging the shared SPI bus, the disk
+interface will unlock/release the bus, and call to an RTOS function that will
+yield to the next runable task:
+
+    void     RFAT_PORT_DISK_YIELD(void);
+
+
+Some SDCARD operations do have a timeout. If no timer is available, the
+timeouts are calculated based upon the numer of SPI SCLK cycles. This of
+course will fail in a RTOS scenario, where other threads/task might consume
+time while the disk inferface is waiting for the SDCARD to respond. Hence a
+simple time-stamping interface is provided:
+
+    void     RFAT_PORT_DISK_TIME_START(void);
+    int      RFAT_PORT_DISK_TIME_ELAPSED(time);
+
+RFAT_PORT_DISK_TIME_START() is meant to store the current time, while
+RFAT_PORT_DISK_TIME_ELAPSED(time) will look at the current time, and the saved
+time-stamp, and decided whether "time" milliseconds have elapsed.
+
+
+All the upper RFAT_PORT_DISK_* interfaces are optional.
+-
+
+
+
+
+DISK SPI INTERFACE
+
+The SPI backend interface is quite simple. There are SCLK/MOSI/MISO as
+standard SPI pins. There is a SDCARD_CS pin, which contols the SDCARD select
+as a normal GPIO. On the SDCARD side there is a pullup resistor on this pin,
+which can be used to detect whether a SDCARD is present or not. Then there is
+an optional SDCARD_CD pin, which indicates whether a SDCARD is inserted or
+not. And lastly there is a optional SDCARD_WP pin, that reflects whether the
+SDCARD is write protected.
+
+There interface has logically 3 modes:
+
+    RFAT_DISK_MODE_NONE
+
+        This is the normal boot up state. SCLK/MOSI/MISO are at their SPI
+        start condition, and if there is no SDCARD_CD pin, then SDCARD_CS is
+        configured as an input. During this state reading SDCARD_CS can be used
+        to detect the presence of an SDCARD.
+
+
+    RFAT_DISK_MODE_IDENTIFY
+
+        During the initialization process that SDCARD needs to have SCLK at
+        400kHz, and needs to see 74 SCLK cycles while SDCARD_CS and MOSI are
+        tied to H. This involves switching SDCARD_CS again to be output at H,
+        and MOSI to be a GPIO tied to H. After the 74 SCLK cycles, MOSI is
+        reverted back to it's SPI functionality, and SDCARD_CS is tied to L,
+        so that the rest of the initialization can take place.
+
+
+    RFAT_DISK_MODE_DATA_TRANSFER
+
+        After the identification had been sucessful the SPI interface is
+        switched to a higher speed, up to 25MHz. This state will always follow
+        RFAT_DISK_MODE_IDENTIFY. Entering this mode should toggle the
+        SDCARD_CS pin, ideally via RFAT_PORT_DISK_SPI_UNSELECT() followed by
+        RFAT_PORT_DISK_SPI_UNSELECT(). 
+
+
+The mode is switched RFAT_PORT_DISK_SPI_MODE(). The return value is the SPI
+SCLK frequency in HZ, which may be used in rfat_disk.c to compute properly
+SDCARD timeouts. 
+
+    uint32_t RFAT_PORT_DISK_SPI_MODE(int mode);
+
+
+Detecting the presence of an SDCARD and whether it's write protected is done via:
+
+    int      RFAT_PORT_DISK_SPI_PRESENT(void);
+    int      RFAT_PORT_DISK_SPI_WRITE_PROTECTED(void);
+
+
+Selecting and deselecting is done via:
+
+    void     RFAT_PORT_DISK_SPI_SELECT(void);
+    void     RFAT_PORT_DISK_SPI_DESELECT(void);
+
+It's imporant to understand that a RFAT_PORT_DISK_SPI_DESELECT() operation
+needs to send a extra dummy byte over the SPI bus to make the SDCARD release
+the bus. It's also important to check whether the SPI bus is still busy,
+before setting the SDCARD_CS pin to H, as there might be still some data in
+some FIFO. Typically in RFAT_PORT_DISK_SPI_SELECT() there should be code to
+reinitialize the SPI device with the proper settings computed in
+RFAT_PORT_DISK_SPI_MODE() if the SPI bus is shared with other devices.
+
+
+Data exchange with the SDCARD is straight forward:
+
+    void     RFAT_PORT_DISK_SPI_SEND(uint8_t data);
+    uint8_t  RFAT_PORT_DISK_SPI_RECEIVE(void);
+
+
+Additionally the DISK SPI interface might implement optimized code for sending
+and receiving a 512 byte block of data:
+
+    void     RFAT_PORT_DISK_SPI_SEND_BLOCK(const uint8_t *data);
+    uint16_t RFAT_PORT_DISK_SPI_RECEIVE_BLOCK(uint8_t *data);
+
+If RFAT_CONFIG_DISK_CRC is set, then RFAT_PORT_DISK_SPI_SEND_BLOCK() needs to
+compute the CRC16 on the fly and send it after it has send 512 bytes of
+data. Similar to that RFAT_PORT_DISK_SPI_RECEIVE_BLOCK() needs to compute the
+CRC16 over the data recieved, and return the XOR of the CRC16 computed, and
+the CRC16 send by the SDCARD.
+
+
+The RFAT_PORT_DISK_SPI_WRITE_PROTECTED() is optional, as is
+RFAT_PORT_DISK_SPI_SEND_BLOCK() and RFAT_PORT_DISK_SPI_RECEIVE_BLOCK(). During
+bringup of a new DISK SPI port it's adviseable to stub out
+RFAT_PORT_DISK_SPI_PRESENT() to return always a 1. Reading back the pullup on
+the SDCARD_CS is sometimes tricky, and most hardware does not make SDCARD_CD
+acessable. 

@@ -1,0 +1,1755 @@
+-
+
+
+
+f_initvolume
+
+    Initialize the volume. Acquire the disk interface that corresponds
+    to the volume. N.b. that the disk interface could be owned
+    currently by some other module, like a USB MSD module. This
+    function does not access hardware, nor does it mount a volume.
+
+
+    SYNOPSIS 
+    
+        int f_initvolume(void)
+
+
+    PARAMETERS
+
+        none.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_INITFUNC             Could not acquire disk interface.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+
+    SEE ALSO
+
+        f_delvolume().
+-
+
+
+
+
+f_delvolume
+
+    Close all open files, unmount the volume, release the disk
+    interface and reset volume internaldata structures. This allows
+    passing control of the disk interface to another module.
+
+    A call to f_delvolume() may not be needed if all outstanding operations
+    had been completed, and all files had been closed.
+
+
+    SYNOPSIS 
+    
+        int f_delvolume(void)
+
+
+    PARAMETERS
+
+        none.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore. 
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_initvolume().
+-
+
+
+
+
+f_format
+
+    Close all open files, unmount the volume, and perform a soft
+    format. Keep Master Boot Record and BIOS Parameter Block in place,
+    just reinitialize the FAT and the root directory. This essentially
+    cleans a SDCARD without losing the internal alignment.
+
+
+    SYNOPSIS 
+    
+        int f_format(int fattype)
+
+
+    PARAMETERS
+
+        int fattype                Ignored, only present for API compatibility.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore. 
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_hardformat()
+.-
+
+
+
+
+f_hardformat
+
+    Close all open files, unmount the volume, and perform a hard
+    format. Layout a new file system with the proper alignment for
+    the SDCARD, create a new Master Boot Record and a new BIOS
+    Parameter Block. Innitialize the FAT and the root directory. This
+    will fully initialize a corrupted SDCARD.
+
+    The selection of FAT12/FAT16/FAT32 is only dependent soley on the
+    SDCARD's size, hence fattype is ignored. The same is true for the
+    cluster selection.
+
+
+    SYNOPSIS 
+    
+        int f_hardformat(int fattype)
+
+
+    PARAMETERS
+
+        int fattype                Ignored, only present for API compatibility.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_MEDIATOOSMALL        Required FAT12 support missing.
+
+        F_ERR_MEDIATOOLARGE        SDXC card, which requires exFAT.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_format().
+-
+
+
+
+
+f_getfreespace
+
+    Compute the number of total, free and used bytes. The F_SPACE
+    struct contains an entry for bad clusters, which however will
+    always read 0, as an SDCARD does internal bad block remapping.
+
+
+    SYNOPSIS 
+    
+        int f_getfreespace(F_SPACE *p_space)
+
+
+    PARAMETERS
+
+        F_SPACE *p_space           Struct to return volume information.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+
+-
+
+
+
+
+f_getserial
+
+    Get the volume's serial number from the BIOS Barameter Block. RFAT
+    will fill this in a f_hardformat() time with the SDCARD's serial
+    number.
+
+
+    SYNOPSIS 
+    
+        int f_getserial(unsigned long *p_serial)
+
+
+    PARAMETERS
+
+        unsigned long *p_serial    Volume serial.
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_getlabel(), f_setlabel()
+-
+
+
+
+
+f_setlabel
+
+    Create or modify the volume's label in a special volume label entry in the
+    root directory.
+
+
+    SYNOPSIS 
+    
+        int f_setlabel(const char *volname)
+
+
+    PARAMETERS
+
+        const char *volname        Volume name.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_NOMOREENTRY          No more available directory entries.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_getserial(), f_getlabel()
+-
+
+
+
+
+f_getlabel
+
+    Get the volume's label either from a special volume label directory entry
+    in the root directory or from the BIOS Barameter Block.
+
+
+    SYNOPSIS 
+    
+        int f_getlabel(char *volname, int length)
+
+
+    PARAMETERS
+
+        char *volname              Volume name.
+        int length                 Maximum length.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_TOOLONGNAME          Too small buffer for volume name.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_getserial(), f_setlabel()
+-
+
+
+
+
+f_mkdir
+
+    Create the specified directory.
+
+
+    SYNOPSIS 
+    
+        int f_mkdir(const char *dirname)
+
+
+    PARAMETERS
+
+        const char *dirname        Directory name.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           Directory path is invalid.
+
+        F_ERR_INVALIDNAME          Directory name is invalid.
+
+        F_ERR_NOTFOUND             Directory name is "." or "..".
+
+        F_ERR_DUPLICATED           Directory already exists.
+
+        F_ERR_NOMOREENTRY          No more available directory entries.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_rmdir()
+-
+
+
+
+
+f_rmdir
+
+    Remove the specified directory.
+
+
+    SYNOPSIS 
+    
+        int f_rmdir(const char *dirname)
+
+
+    PARAMETERS
+
+        const char *dirname        Directory name.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           Directory path is invalid.
+
+        F_ERR_INVALIDNAME          Directory name is invalid.
+
+        F_ERR_NOTFOUND             Directory not found.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_NOTEMPTY             Directory is not empty.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_mkdir()
+-
+
+
+
+
+f_chdir
+
+    Change the current directory to the specified directory.
+
+
+    SYNOPSIS 
+    
+        int f_chdir(const char *dirname)
+
+
+    PARAMETERS
+
+        const char *dirname        Directory name.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           Directory path is invalid.
+
+        F_ERR_INVALIDNAME          Directory name is invalid.
+
+        F_ERR_NOTFOUND             Directory not found.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_getcwd()
+-
+
+
+
+
+f_getcwd
+
+    Return the full path name (starting from the root directory) of the current
+    directory.
+
+
+    SYNOPSIS 
+    
+        int f_getcwd(char *dirname, int length)
+
+
+    PARAMETERS
+
+        char *dirname              Directory name.
+        int length                 Maximum length.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_NOTFOUND             Damaged directory tree.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_TOOLONGNAME          Too small buffer for directory name.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_chdir()
+-
+
+
+
+
+f_rename
+
+    Rename the specified file or directory. The new name does not include
+    a full path, which implies that a file or diectory cannot be moved across
+    directories. A file that is open cannot be renamed. A file or directory
+    that is read only cannot be renamed. 
+
+
+    SYNOPSIS 
+    
+        int f_rename(const char *filename, const char *newname)
+
+
+    PARAMETERS
+
+        const char *filename       Original file name.
+        const char *newname        New file name.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_DUPLICATED           File/directory already exists.
+
+        F_ERR_NOMOREENTRY          No more available directory entries.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+	F_ERR_LOCKED               File is currently open.
+
+        F_ERR_ACCESSDENIED         File/directory is read only.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_delete(), f_open()
+-
+
+
+
+
+f_delete
+
+    Delete the specified file. A file that is open cannot be deleted. A file
+    that is read only cannot be deleted.  
+
+
+    SYNOPSIS 
+    
+        int f_delete(const char *filename)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File path is invalid.
+
+        F_ERR_INVALIDNAME          File name is invalid.
+
+        F_ERR_NOTFOUND             File not found.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+	F_ERR_LOCKED               File is currently open.
+
+        F_ERR_ACCESSDENIED         File is read only.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+
+
+    SEE ALSO
+
+        f_open(), f_rename() 
+-
+
+
+
+
+f_filelength
+
+    Return the length of the specified file. If a file is open for writing only
+    the information that has been written out to the SDCARD is used.
+
+
+    SYNOPSIS 
+    
+        long f_filelength(const char *filename)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+
+
+    RETURNS
+
+        Length of the file , or 0 if the file did not exist, or the was another error.
+
+
+    SEE ALSO
+
+        f_open, f_rename() 
+-
+
+
+
+
+f_findfirst
+
+    Find the first file or directory that matches the file name specification
+    within a directory.
+
+    The file name may contain wildcards:
+
+	*    Matches zero or more characters until encountering and matching
+	     the final '.' in the name. 
+
+	?    Matches a single character or, upon encountering a '.' or end of
+	     name string, advances the expression to the end of the set of
+	     contiguous '?'. 
+
+       	.    Matches either a '.' or zero characters beyond the name string.
+
+
+    The find.filename returned is the proper formatted "name.ext" string that
+    can be used directly as input for other APIs. The find.name/find.ext
+    elements always contain the padded 8.3 name representation. If VFAT
+    support is enabled this maps to the corresponding short file name.
+
+    FAT12/FAT16 record a composite create/modify time/date. FAT32 records
+    separate time/date stamps for create and modify. The returned
+    find.ctime/find.cdate correspond to the last modification time/date, not
+    the create time/date.
+
+
+    SYNOPSIS 
+    
+        int f_findfirst(const char *filename, F_FIND *find)
+
+
+    PARAMETERS
+
+        const char *filename       Name specification.
+        F_FIND *find               Find information.
+
+
+    RETURNS
+
+	find.filename		   Full filename.
+	find.name		   Name portion of 8.3 file name.
+	find.ext		   Ext portion of 8.3 file name.
+	find.attr		   File/directory attributes.
+	find.ctime		   File/directory last modification time.
+	find.cdate		   File/directory last modification date.
+	find.filesize		   File length.
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_findnext()
+-
+
+
+
+
+f_findnext
+
+    Find the next file or directory that matches the file information setup by
+    a previous f_findfirst() call.
+
+
+    SYNOPSIS 
+    
+        int f_findnext(F_FIND *find)
+
+
+    PARAMETERS
+
+        F_FIND *find               Find information.
+
+
+    RETURNS
+
+	find.filename		   Full filename.
+	find.name		   Name portion of 8.3 file name.
+	find.ext		   Ext portion of 8.3 file name.
+	find.attr		   File/directory attributes.
+	find.ctime		   File/directory last modification time.
+	find.cdate		   File/directory last modification date.
+	find.filesize		   File length.
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_findfirst()
+-
+
+
+
+
+f_settimedate
+
+    Set the last modification time of a file or directory.
+
+
+    SYNOPSIS 
+    
+        int f_settimedate(const char *filename, unsigned short ctime, unsigned short cdate)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+	unsigned short ctime       Last modification time.
+	unsigned short cdate       Last modification date.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_gettimedate()
+-
+
+
+
+
+f_gettimedate
+
+    Get the last modification time of a file or directory.
+
+
+    SYNOPSIS 
+    
+        int f_gettimedate(const char *filename, unsigned short *p_ctime, unsigned short *p_cdate)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+	unsigned short *p_ctime    Last modification time.
+	unsigned short *p_cdate    Last modification date.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_settimedate()
+-
+
+
+
+
+f_setattr
+
+    Set the directory entry attributes a file or directory. Only F_ATTR_ARC,
+    F_ATTR_SYSTEM, F_ATTR_HIDDEN and F_ATTR_READONLY can be changed. 
+
+
+    SYNOPSIS 
+    
+        int f_setattr(const char *filename, unsigned char attr)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+	unsigned char attr         Attributes.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_getattr()
+-
+
+
+
+
+f_getattr
+
+    Get the directory entry attributes a file or directory.
+
+
+    SYNOPSIS 
+    
+        int f_getattr(const char *filename, unsigned char *p_attr)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+	unsigned char *p_attr      Attributes.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+        F_ERR_NOTFORMATTED         No MBR or BPB found.
+
+        F_ERR_INVALIDDIR           File/directory path is invalid.
+
+        F_ERR_INVALIDNAME          File/directory name is invalid.
+
+        F_ERR_NOTFOUND             File/directory not found.
+
+        F_ERR_INITFUNC             Volume was not initialized.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_INVALIDMEDIA         Not a FAT file system.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_NOTSUPPSECTORSIZE    Sector size other than 512 bytes.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_setattr()
+-
+
+
+
+
+f_open
+
+    Open the specified file.
+
+    The "mode" describes how the file is being opended. The standard
+    ANSI-C modes are supported:
+
+        "r"        Open file for reading.
+
+        "w"        Truncate to zero length or create file for
+		   writing. 
+
+        "a"        Append; open or create file for writing at
+		   end-of-file.  
+
+        "r+"       Open file for update (reading and writing).
+
+        "w+"       Truncate to zero length or create file for update. 
+
+        "a+"	   Append; open or create file for update, writing at
+		   end-of-file.   
+
+    The "b" or "t" modes are not supported as per default all files
+    are treated as untranslated binary files.
+
+    In addition to the standard ANSI-C mode a few extended sequences:
+
+        "c"        Commit every pending write operation to the SDCARD
+		   before f_write/f_putc returns. Normally RFAT will
+		   keep write operations buffered on the SDCARD. A
+		   sudden power loss might result in corrupt
+		   data. However there is a performance penalty with
+		   using this option. N.b. this only affects data that
+		   is already transferred to the SDCARD, not data
+		   that is still cached within RFAT. 
+
+        "S"        Optimize SDCARD accesses for sequential read/write
+	           operations. This will affect the way new clusters
+		   will be allocated.
+
+        "R"        Optimize SDCARD accesses for random read/write
+		   operations.
+
+        ",<size>"  If CONTIGUOUS file allocation is supported this will
+		   either create a new file with at least <size> bytes
+		   allocated in a set of contiguous clusters, or if
+		   opening an existing file will verify that the file
+		   had previously been created using a contiguous
+		   cluster allocation holding at least <size>
+		   bytes. <size> is specified with normal digits, and
+		   optionally a trialing "K", "M" or "G" designating
+		   Kilo Bytes, Mega Bytes or Giga Bytes. If the
+		   allocation did not succeed or the file does not
+		   match the <size> criteria, the NULL is
+		   returned. The advantage of pre-allocating a file is
+		   in the fact that during streaming read or write
+		   operations, no FAT/DIR accesses are necessary.
+
+
+    The same file can be opened multiple in read-only mode. However
+    only one instance of a file can be open for writing.
+
+
+    SYNOPSIS 
+    
+        F_FILE *f_open(const char *filename, const char *mode)
+
+
+    PARAMETERS
+
+        const char *filename       File name.
+	const char *mode           Opening mode.
+
+
+    RETURNS
+
+        F_FILE*                    Pointer to the open file.
+
+	NULL			   Could not open file.
+	
+
+    SEE ALSO
+
+        f_close()
+-
+
+
+
+
+f_close
+
+    Close the specified file.
+
+    The file will be always closed. However the process of closing a
+    file involves flushing a set of caches, possibly updating the
+    directroy entry and so forth. Hence a non-recoverable error might
+    occur. 
+
+    The way that RFAT buffers file writes, updates to the associated
+    directory entry only happens at f_close() and f_flush() time. Thus
+    the on SDCARD representation will not change untill f_close() or
+    f_flush() is called.
+
+    Not cleared pending errors will still be reported.
+
+
+    SYNOPSIS 
+    
+        int f_close(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be closed.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+	F_ERR_NOMOREENTRY	   No space left on SDCARD.
+
+        F_ERR_NOTOPEN              Invalild file.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+	F_ERR_ACCESSDENIED         File not open for reading/writing.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_ONDRIVE              Generic SDCARD internal error.
+
+        F_ERR_INVALIDSECTOR        ECC error accessing SDCARD data. 
+
+        F_ERR_READ                 CRC error when reading from SDCARD.
+
+        F_ERR_WRITE                CRC error when writing to SDCARD.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_flush(), f_open()
+-
+
+
+
+
+f_flush
+
+    Write all buffered data for the specified file to disk, and issue
+    pending meta data updates.
+
+    The way that RFAT buffers file writes, updates to the associated
+    directory entry only happens at f_close() and f_flush() time. Thus
+    the on SDCARD representation will not change untill f_close() or
+    f_flush() is called.
+
+    Data written to the SDCARD will be fully committed after f_flush().
+
+    Not cleared pending errors will still be reported.
+
+
+    SYNOPSIS 
+    
+        int f_flush(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be flushed.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+	F_ERR_NOMOREENTRY	   No space left on SDCARD.
+
+        F_ERR_NOTOPEN              Invalild file.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+	F_ERR_ACCESSDENIED         File not open for reading/writing.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_ONDRIVE              Generic SDCARD internal error.
+
+        F_ERR_INVALIDSECTOR        ECC error accessing SDCARD data. 
+
+        F_ERR_READ                 CRC error when reading from SDCARD.
+
+        F_ERR_WRITE                CRC error when writing to SDCARD.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_close(), f_open()
+-
+
+
+
+
+f_write
+
+    Write "count" data items of "size" each to a file.
+
+    The file position will be advanced by the number of bytes written
+    sucessfully. If the previous file position was past the file
+    length, the gap will be filled with zeros. If the file position
+    is at the end-of-file the file will be extended up to reaching the
+    maximum file size, or in case of a pre-allocated file, the size of
+    the allocation. f_write() returns the number of successfully
+    written items. If there was no space to fullfill the write
+    request, or an error occured, this number will be different from
+    the specified "count". f_eof() can be used to detect whether the
+    maximum file size was reached, or whether an error
+    occured. f_error() can be used to retrieve the error code. If an
+    error occurs, the file position is undefined. The error code can
+    be cleared by calling f_rewind().
+
+
+    SYNOPSIS 
+    
+        long f_write(const void *buffer, long size, long count, F_FILE *file)
+
+
+    PARAMETERS
+
+	const void *buffer         Data to be written.
+	long size		   Size per item.	
+	long count		   Number of items.
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        long			   Number of items written.
+	
+
+    SEE ALSO
+
+        f_eof(), f_error(), f_rewind()
+-
+
+
+
+
+f_read
+
+    Read "count" data items of "size" each from a file.
+
+    The file position will be advanced by the number of bytes read
+    sucessfully. f_read() returns the number of sucessfully
+    read items. If there was no space to fullfill the read
+    request, or an error occured, this number will be different from
+    the specified "count". f_eof() can be used to detect whether the
+    file length was reached, or whether an error occured. f_error()
+    can be used to retrieve the error code. If an error occurs, the
+    file position is undefined. The error code can be cleared by
+    calling f_rewind(). 
+
+
+    SYNOPSIS 
+    
+        long f_read(void *buffer, long size, long count, F_FILE *file)
+
+
+    PARAMETERS
+
+	void *buffer               Data to be read.
+	long size		   Size per item.	
+	long count		   Number of items.
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        long			   Number of items read.
+	
+
+    SEE ALSO
+
+        f_eof(), f_error(), f_rewind()
+-
+
+
+
+
+f_seek
+
+    Set the file position for the specified file.
+
+    The new position computed adding the "offset" either to the
+    beginning of the file via F_SEEK_SET, or to the current file
+    position via F_SEEK_CUR, or relative to the end-of-file via
+    F_SEEK_END.
+
+    Setting the file position to 0 will always work.
+
+    Setting the file position past the file length is allowed. A
+    subsequent write at this position will zero out the gap.
+
+    If a file is open for writing a call to f_seek() will cause any
+    buffering to be flushed.
+
+
+    SYNOPSIS 
+    
+        int f_seek(F_FILE *file, long offset, int whence)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+	long offset                Offset relative to whence.
+	int whence		   F_SEEK_SET, F_SEEK_CUR or F_SEEK_END.
+
+
+    RETURNS
+
+        F_NO_ERROR                 Success.
+
+	F_ERR_NOMOREENTRY	   No space left on SDCARD.
+
+        F_ERR_NOTOPEN              Invalild file.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+	F_ERR_NOTUSEABLE	   Illegal value for offset.
+
+	F_ERR_ACCESSDENIED         File not open for reading/writing.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_ONDRIVE              Generic SDCARD internal error.
+
+        F_ERR_INVALIDSECTOR        ECC error accessing SDCARD data. 
+
+        F_ERR_READ                 CRC error when reading from SDCARD.
+
+        F_ERR_WRITE                CRC error when writing to SDCARD.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_rewind()
+-
+
+
+
+
+f_tell
+
+    Obtain the current file position for the specified file.
+
+
+    SYNOPSIS 
+    
+        int f_tell(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+	file position		   Current file position
+
+        -1                         An error occured or was pending.
+	
+
+    SEE ALSO
+
+        f_error(), f_rewind()
+-
+
+
+
+
+f_eof
+
+    Report back if the specified is at end-of-file.
+
+
+    SYNOPSIS 
+    
+        int f_eof(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+	zero			   File is not at end-of-file.
+
+	not zero		   File is at end-of-file.
+	
+
+    SEE ALSO
+
+        f_error(), f_rewind()
+-
+
+
+
+
+f_error
+
+    Retrieve the error indicator for the specified file.
+
+
+    SYNOPSIS 
+    
+        int f_error(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        F_NO_ERROR                 No pending error.
+
+	F_ERR_NOMOREENTRY	   No space left on SDCARD.
+
+        F_ERR_NOTOPEN              Invalild file.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+	F_ERR_ACCESSDENIED         File not open for reading/writing.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_ONDRIVE              Generic SDCARD internal error.
+
+        F_ERR_INVALIDSECTOR        ECC error accessing SDCARD data. 
+
+        F_ERR_READ                 CRC error when reading from SDCARD.
+
+        F_ERR_WRITE                CRC error when writing to SDCARD.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_eof(), f_rewind()
+-
+
+
+
+
+f_rewind
+
+    Set the file position specified file to the beginning of the file
+    and clear the error indicator.
+
+
+    SYNOPSIS 
+    
+        int f_rewind(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        F_NO_ERROR                 No pending error.
+
+        F_ERR_NOTOPEN              Invalild file.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_eof(), f_error()
+-
+
+
+
+
+f_putc
+
+    Write a single character to the specified file.
+
+    This function is equivalent to a f_write(), except that it can
+    directly write in to the buffer associated with the file, making it
+    more efficient.
+
+    As with f_write(), enf-of-file and errors are reported throu
+    f_eof. and f_error()
+
+
+    SYNOPSIS 
+    
+        int f_putc(int c, F_FILE *file)
+
+
+    PARAMETERS
+
+        int c                      Character to write.
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        c                          Success.
+
+	-1                         Failure.
+	
+
+    SEE ALSO
+
+        f_eof(), f_error()
+-
+
+
+
+
+f_getc
+
+    Read a single character from the specified file.
+
+    This function is equivalent to a f_read(), except that it can
+    directly read from the buffer associated with the file, making it
+    more efficient.
+
+    As with f_read(), enf-of-file and errors are reported throu
+    f_eof. and f_error()
+
+
+    SYNOPSIS 
+    
+        int f_getc(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        not -1                     Success.
+
+	-1                         Failure.
+	
+
+    SEE ALSO
+
+        f_eof(), f_error()
+-
+
+
+
+
+f_seteof
+
+    Set the file length of the specified file to the current file
+    position. If the file position is past the file length the gap
+    will be filled with zeros, otherwise the file is truncated.
+
+
+    SYNOPSIS 
+    
+        int f_seteof(F_FILE *file)
+
+
+    PARAMETERS
+
+        F_FILE *file               File to be accessed.
+
+
+    RETURNS
+
+        F_NO_ERROR                 No pending error.
+
+	F_ERR_NOMOREENTRY	   No space left on SDCARD.
+
+        F_ERR_NOTOPEN              Invalild file.
+
+        F_ERR_EOF                  Damaged cluster chain.
+
+	F_ERR_ACCESSDENIED         File not open for reading/writing.
+
+        F_ERR_CARDREMOVED          SDCARD has been removed.
+
+        F_ERR_ONDRIVE              Generic SDCARD internal error.
+
+        F_ERR_INVALIDSECTOR        ECC error accessing SDCARD data. 
+
+        F_ERR_READ                 CRC error when reading from SDCARD.
+
+        F_ERR_WRITE                CRC error when writing to SDCARD.
+
+        F_ERR_BUSY                 Timeout on acquiring mutex/semaphore.
+
+        F_ERR_WRITEPROTECT         Volume is read only.
+
+        F_ERR_OS                   Unspecified internal RTOS error.
+
+        F_ERR_UNUSABLE             Volume is unusable. 
+	
+
+    SEE ALSO
+
+        f_eof(), f_error()
+-

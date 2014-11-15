@@ -1,0 +1,418 @@
+-
+
+
+
+MUTLIPLE OPEN FILES
+
+RFAT_CONFIG_MAX_FILES
+
+    Specifies the number of concurrently open files. Default is 1.
+
+
+-
+
+
+
+FAT12 SUPPORT
+
+The SDCARD standard allows SDSC cards with less or equal to 64MB
+capacity. Those SDCARDs require support for FAT12. One the other hand it's
+hard to find any SDSC cards with less than 512MB in the wild, which makes
+FAT12 support utterly useless.  
+
+RFAT_CONFIG_FAT12_SUPPORTED
+
+    If enabled, FAT12 for SDSC card with less or equal to 64MB
+    capacity is supported. 
+
+
+-
+
+
+
+LONG FILENAMES
+
+If configured RFAT does support VFAT type long filenames. Per default only
+7bit ASCII characters are supported. If UTF8 support is enabled the full 16bit
+UNICODE space can be used. A file or directory name can be specified using
+UTF8 multi byte encoding. It should be noted though that this implies internal
+code paths that deal with UNICODE upcase logic, which is rather
+expensive. RFAT does support the WINNT/WINXP/WIN7 way of special handling all
+lower case name-string and extension-string. In general VFAT type long file
+names make the directory entry handling more complex and prone to power
+failures if the transaction safe mode is not enabled. For small scale
+applications VFAT support should be disabled. N.b. Microsoft does require a
+license for the use of VFAT type long file names, which may be an issue for
+commercial use.
+
+
+RFAT_CONFIG_VFAT_SUPPORTED
+
+   Enable the use of long fime names.
+
+
+RFAT_CONFIG_UTF8_SUPPORTED
+
+   Enable the full use of 16 bit UNICODE name.
+
+
+-
+
+
+
+WRITE ORDERING
+
+FAT12/FAT16 & FAT32 do have a not so well documented entry in the extended BPB
+that signals whether the volume is dirty (bit 0 at offset 37 for FAT12/FAT16,
+at offset 50 for FAT32) called "VolumeDirty". There is a second bit at the
+same offset called "MediaFailure" (bit 1) which records media failures which
+may trigger a surface scan. In order to ensure some degree of fault tolerance
+this implies a specific write order for meta data updates.
+
+
+Creating directory entries or creating cluster allocations:
+
+    1. Set "VolumeDirty" to 1 if not already set to 1
+    2. Update FAT1/FAT2
+    3. Create/update the directory entry
+    4. Update FSINFO
+    5. Set "VolumeDirty" to 0 if it had been 0 at mount time
+
+
+Deleting directory entries or freeing cluster allocations:
+
+    1. Set "VolumeDirty" to 1 if not already set to 1
+    2. Create/update the directory entry
+    3. Update FAT1/FAT2
+    4. Update FSINFO
+    5. Set "VolumeDirty" to 0 if it had been 0 at mount time
+
+
+When a file is opened for writing, then it is inefficient to execute the first
+sequence whenever the length of the file changes during f_write(). Hence the
+sequence is modified so that "VolumeDirty" is reset to 0 during f_flush() and
+f_close():
+
+
+Modifying the cluster chain of a file:
+
+    1. Set "VolumeDirty" to 1 if not already set to 1
+    2. Update FAT1/FAT2
+
+Flushing or closing a file:
+
+    1. Update the directory entry
+    2. Update FSINFO
+    3. Set "VolumeDirty" to 0 if it had been 0 at mount time
+
+
+There are however special cases to deal with that are triggered by f_seteof()
+or an appending f_write(). If a file gets truncated, which is it's cluster
+chain gets deleted then the upper alternate update sequence cannot be used, as
+the directory entry associated with the file needs to be updated right away,
+as the directory entry needs to be updated before the FAT1/FAT2 gets
+updated. The other special case is where a file is associated with a new
+cluster chain. There the directory entry has to be updated with the new
+cluster chain right away, or else it could be lost entirely.
+
+It should be understood that between setting "VolumeDirty" to 0 and then later
+on setting it to 1 again a power failure will still leave the file system in
+an inconsistent state. However the ordering ensures that for a non-VFAT
+configuration at worst unreferenced cluster chains will be introduced.
+
+While RFAT does adhere to the conceptional write sequence individual aspects
+are configurable:
+
+
+RFAT_CONFIG_VOLUME_DIRTY_SUPPORTED
+
+    If disabled the update of the "VolumeDirty" bit is omitted. It
+    should be understood that enabling this feature will add
+    approximately 90 bytes to the RAM footprint which is spend on a
+    BPB cache. As this feature modifies the boot sector, if the
+    partition is set bootable, RFAT will not modify the "VolumeDirty"
+    bit. 
+
+
+RFAT_CONFIG_MEDIA_FAILURE_SUPPORTED
+
+    If enabled, the "MediaFailure" bit will be updated whenever the
+    "VolumeDirty" bit is modified. Internally this reflects the
+    occurence of a F_ERR_INVALIDSECTOR, in other words an ECC error on
+    the SDCARD.
+
+
+RFAT_CONFIG_FSINFO_SUPPORTED
+
+    If disabled the update of FSINFO is omitted. If enabled, but the
+    update of the "VolumeDirty" bit is disabled, then only the
+    "Next Free Cluster" could be tracked, while "Free Cluster Count"
+    is set to FFFFFFFFh meaning it's undefined. This is required as
+    only with proper "VolumeDirty" updates a clean state of FSINFO can
+    be guaranteed. 
+
+
+RFAT_CONFIG_2NDFAT_SUPPORTED
+
+    If disabled only FAT1 will be written to. Normally no FAT file
+    system implementation will ever look at FAT2, which means keeping
+    it updated is rather pointless.
+
+
+
+TRANSACTION SAFE MODE
+
+The mentioned write ordering is not power fail safe, as the multi step
+process of updating FAT1/FAT2/DIR can be interrupted at any time. In
+transaction safe mode, before the write sequence of the meta data changes is
+initated, a record is created of the changes that are about to be written to
+the media. A "TransactionRecorded" bit is added. If this bit is to 1, then
+there had been a recorded transaction that has not been fully committed
+yet. If the "TransactionRecorded" bit is set to 0, then all recorded
+transactions have been committed. FAT updates are recorded into FAT2, which
+means that FAT1 contains always the committed state. DIR updates are recorded
+into a special set aside LOG area on the media. This leads to the followin
+modifed write sequence: 
+
+    1. Accumlate FAT changes into FAT2
+    2. Record DIR changes into LOG
+    3. Set "TransactionRecorded" to 1
+    4. Update FAT1 with changes from FAT2
+    5. Create/update the directory entry from LOG
+    6. Update FSINFO
+    7. Set "TransactionRecorded" to 0
+
+N.b. the same sequence is used for creation and deletion of directory
+entries as well as for all updates to the cluster chains.
+
+RFAT uses bit 15 of "Sector Size" in the BPB for
+"TransactionRecorded". The ensures that if a transaction is pending
+the file system cannot be mounted by a non RFAT aware system, as
+the "Sector Size" reflects an invalid value. The "VolumeDirty" bit is
+not maintained as per definiton with transaction safety there is never
+a dirty state that could not be recovered from. The LOG entry is aliased
+with the BPB, where there are 420 unused bytes available that can be
+reused for such purposes. The LOG entry can only track one
+transaction, which however can be a composite of UPDATE/CREATE/DELETE
+of a directory entry. The FAT2 updates are tracked via a bitmap,
+whereby each bit reflects the modified state of one block/sector in
+FAT2, so that only modifed blocks/sectors from FAT2 get copied back
+into FAT1. For FAT12/FAT16 this bitmap is put into LOG (only 256 bits
+needed), for FAT32 this bitmap is put into reserved sectors or
+undefined sectors exist between the BPB and FAT1. The upper limit is
+8192 bits, or 2 blocks/sectors, which is reflects the maximum number
+of clusters a properly formatted a 32GB SDHC. For a VFAT/UTF8 configuration
+the LOG has to be split over 2 blocks/sectors, in case a directory entry with
+a name longer than 128 wchar_t characters is created. 
+
+
+RFAT_CONFIG_TRANSACTION_SAFE_SUPPORTED
+
+    If enabled, transaction safe mode is used. It should be understood
+    that enabling this feature will add approximately 1024 bytes to
+    the RAM footprint which is spend on a LOG cache and a MAP cache
+    (the bitmap that track modified FAT2 blocks/sectors). As this
+    feature modifies the boot sector, if the partition is set
+    bootable, RFAT will not mount the SDCARD.
+
+
+
+META DATA PROTECTION
+
+Reads and write from/to the FAT and/or directory entries need to be executed
+properly or the file system is in a undefined state. If RFAT does detect such
+a scenario it will mark the volume as UNUSABLE. Occasionally a read or a write
+can fail due to a timeout or some other glitch. In that case RFAT will retry
+the read/write in the hope that a SDCARD reset will succeed.
+
+
+RFAT_CONFIG_META_DATA_RETRIES
+
+    Number of time RFAT should retry a meta data read or write before
+    marking the volume as UNUSABLE. Typically set to 3, which means
+    giving up after 4 attempts.
+
+
+
+IMPLEMENTATION NOTES
+
+The original write ordering is a well thought out conceptual process, but is
+perhaps not important to the scenarios relevant to RFAT. If a media is mounted
+that has the "VolumeDirty" flag set, then FSINFO does not get fully
+updated. There is no good way within RFAT to deal with a dirty volume. So it's
+left to other, external tools, like CHKDISK.EXE to address potential issues.  
+
+For the transaction safe mode there are two established alternatives in
+literature. One is Microsoft's TFAT/TexFAT. There the key idea is to hide all
+meta data updates behind cluster chain manipulations, so that a simple toggle
+between FAT1 and FAT2 as the current active FAT provides the commit point for
+the transactional process. That process involves a good amount of copying data
+on the media, which for SDCARDs is a slow process, as it can only be
+accelerated by using a substantial amount of RAM for buffering, which of
+course is not available in small embedded systems. The other well understood
+approach is journaling. A FAT file system is not well suited for integrating a
+journal naturally, which means a sophisticated journal replay mechanism has to
+be added. This mechanism has to read/write extra data, which again can only be
+accelerated by using a substantial amount for RAM for buffering.
+
+
+-
+
+
+
+CLUSTER ALLOCATION
+
+SDCARDs are based upon NAND flash which has certain properties that make it
+desireable to separate different use cases of clusters to help improve
+performance. A SDCARD is divided internally into allocation units, which serve
+as atomic management unit. If clusters within such an allocation unit are not
+filled up sequentially the SDCARD has to undertake extra steps. For example
+rewriting the same cluster multiple times effectively causes the allocation
+unit first to be copied to a new allocation unit. Hence RFAT allows to use
+sequential cluster allocator for file allocations. This allocator first
+searches the FAT for an allocation unit that is only partially filled or
+completely empty. Subsequently clusters are allocated out of the selected
+allocation unit in strictly increasing order. Directory cluster allocations or
+allocations for files that not had been openeded with "S" (sequential) mode on
+the other hand are allocated with a next fit scheme outside the currently
+selected allocation unit for sequential allocation. It's predictable that
+those clusters will get rewritten over and over again, hence they need to be
+separated from sequential allocated clusters.
+
+For files that are intended to be written in purely linear fashion, RFAT
+allows congiuous pre-allocation of clusters at open time. The specified file
+size will be rounded up to the next allocation unit size. As it's understood
+that such a file is linear, no further accesses to the FAT are necessary while
+reading/writing.
+
+
+RFAT_CONFIG_SEQUENTIAL_SUPPORTED
+
+    If disabled RFAT will revert back to a single unified next fit
+    cluster allocator. 
+
+
+RFAT_CONFIG_CONTIGOUS_SUPPORTED
+
+    Enables the internal logic to support contiguous cluster
+    allocation as well as the optimized handling of contiguous files. 
+
+
+-
+
+
+
+FILE SYSTEM LAYOUT
+
+A properly formatted SDCARD is divided into 3 regions, the "Partition Area",
+the "System Area" and the "User Area". The "Partition Area" does contain the
+MBR. The "System Area" contains the BPB, FAT1/FAT2 and for FAT12/FAT16 it does
+contain the root directory. The "User Area" contains all data that can be
+allocated via a cluster chain.
+
+For a SDSC each of those areas is aligned to an erase sector, which can be up
+to 64kB. SDHC uses the allocation unit size to align those regions, which is
+assumed to be 4MB. SDXC would be similar in that it uses 16MB allocation unit
+sizes to align file system areas.
+
+SDSC always uses FAT12/FAT16, whereby the "Reserved Sector Count" is forced to
+be 1 in the BPB. SDHC aligns the BPB to an allocation unit. Due to the fact
+that the boot sector contains really more than a single sector, the "Reserved
+Sector Count" is at least 9. It's noteworthy that more recent SDSC also use
+the concept of allocation units (see SDCARD specification), which then again
+means that the "Partition Area" and the "System Area" are covered by a single
+allocation unit.
+
+SDHC covers the "System Area" allocation unit #1 and #2 (for 32GB only).
+ 
+
+-
+
+
+
+CACHE CONFIGURATION
+
+As RFAT is intended for use in small scale embedded system various cache
+layouts are configurable for different use cases. Conceptually there is a DIR
+cache for directory accesses, a FAT cache for FAT accesses, and a DATA cache
+for file data accesses. The DIR cache always has one 512 byte entry
+allocated. The FAT cache can be configured to have 0, 1 or 2 512 byte
+entries. If configured with 0 entries, the DIR cache is reused as FAT
+cache. The DATA cache can be configured with 0 or 1 entry. As with a FAT
+cache, configuring the DATA cache with 0 entries means that the DIR cache is
+reused as DATA cache.
+
+RFAT_CONFIG_FAT_CACHE_ENTRIES
+
+    Number of 512 byte entries used for the FAT cache.
+
+ 
+RFAT_CONFIG_DATA_CACHE_ENTRIES
+
+    Number of 512 byte entries used for the DATA cache.
+
+
+RFAT_CONFIG_FILE_DATA_CACHE
+
+    Enables a per file DATA cache, rather a per volume DATA cache.
+
+
+A minimal configuration would use 0 FAT cache entries and 0 DATA cache
+entries, resulting in only 512 bytes used.
+
+The sweet spot for most scenarios is to use 1 FAT cache entry and 0 DATA cache
+entries, which means that there is a shared DIR/DATA cache, resulting in 1024
+bytes used for caching.
+
+If there are many concurrently open files the maximum configuration of 2 FAT
+cache entries and a per file DATA cache entry would make sense
+
+
+In addition to the sector/block level DIR/FAT/DATA cache, RFAT also implements
+a seperate cluster cache. The idea is that f_seek() performance would become a
+bottleneck in a highly fragemented file system, then the FAT cache with even 2
+entries would be insufficient. Each cluster cache entry does take up 8 bytes
+and the number of entries is required to be a power of 2.
+
+RFAT_CONFIG_CLUSTER_CACHE_ENTRIES
+
+    Number of cluster entries in use. Typically 32, 64, 128 or 256 if
+    used.
+
+
+-
+
+
+
+COMMUNICATION PATH PROTECTION
+
+At higher speed it's possible if not likely that single bit errors do
+occur. Those can show up on the DATA and/or CLOCK pins of the SDCARD, either
+due to menchanical issues or other electical disturbances. The disk interface
+does support CRC checking to catch those errors. In addition to detecting
+those failure scenarios a retry mechansim is implemented to recover from this
+type of failure. If CRC handling is disabled there is no guaranteee that the
+SDCARD reads or writes the proper data, or even handles commands sent to it
+properly. While it is tempting to ignore those unlikely scenarios, if they do
+occur the effects are catastrophical.
+
+RFAT_CONFIG_DISK_CRC
+
+    If disabled not CRC checking takes place.
+
+
+RFAT_CONFIG_DISK_COMMAND_RETRIES
+
+    Number of retries after a CRC error during command transmission
+    has occured. Typically set to 3. Could be set to 0 to allow
+    detection of a CRC error but without retry handling.
+
+
+RFAT_CONFIG_DISK_DATA_RETRIES
+
+    Number of retries after a CRC error during data transmission
+    has occured. Typically set to 3. Could be set to 0 to allow
+    detection of a CRC error but without retry handling.
+
+
+

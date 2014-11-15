@@ -1,0 +1,69 @@
+-
+
+
+
+
+OVERVIEW
+
+The TM4C123 port does support a simple SPI FIFO driven SDCARD
+interface. No locking is implemented. The timeout interface uses the
+internal DWT->CYCCNT of the Cortex-M4. The code is set up per default
+for the "Color LCD Booster Pack" available throu www.tindie.com. The
+pinout chosen was the "legacy pinout". Repurposing this to any other pinout if
+fairly straight forward in tm4c123_disk.h.
+-
+
+
+
+CORE INTERFACE
+
+No locking is implemented at the core interface level. There is no
+support for RFAT_PORT_CORE_TIMEDATE, which could however be derived
+from a RTC module.
+-
+
+
+
+DISK INTERFACE
+
+No locking is implemented at the disk interface level.
+
+The timoeut support is implemented via the DWT->CYCCNT. This is a
+freerunning counter at the core clock frequency. With a 80MHz core
+clock, it will wrap around in about 53.6 seconds. The is deemed to be
+sufficient for most non-RTOS applications. Since this timer is always
+present, there is no good reason to fall back to estimating the SPI
+clock cycles.
+-
+
+
+
+
+DISK SPI INTERFACE
+
+The default configuration is to not use CD and WP pins, as they are
+not present on the sample target, but instead sense the pullup resistor on the
+SDCARD_CS line. The macros that would make use of CD and WP are commented in
+tm4c123_disk.h, and could be properly defined for other SDCARD modules that
+support them. N.b. that there is no standard as to what logic level CD and WP
+would return, hence there are macros to allow inversion of the logic
+level. Typically SD is inverted (so that it does not consume power when a card
+is missing), which WD is  non-inverted.
+
+With the default target the SPI bus is shared between the SDCARD and a
+TFT. Thus there is logic in tm4c123_disk_select() to reprogam the
+poper SSI registers to allow different protocols and speeds on the SPI
+bus.
+
+The tm4c123_disk_send_block() and tm4c123_disk_recieve_block()
+routines make heavy use of the SSI FIFO, and interleave CRC16
+calculation with sending/receiving data. With the default 20MHz SPI
+bus SCLK setup, there are enough spare clock cycles to compute the
+CRC16 between write to the SSI FIFO.
+
+It should be noted that 25MHz is the upper limit generally available
+on SDCARDs (unless they would support a high speed mode). However in
+real live of a lot of the SDCARD modules do not work above
+12.5MHz. Hence some experimentation is be needed when porting to a
+new target.
+-
